@@ -1,0 +1,16 @@
+{
+  "name": "live-webpage-preview",
+  "version": "1.0.0",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "description": "",
+  "dependencies": {
+    "chokidar": "^3.6.0",
+    "playwright": "^1.46.1"
+  }
+}
