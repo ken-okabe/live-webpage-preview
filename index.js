@@ -2,12 +2,51 @@ const http = require('http');
 const fs = require('fs'); // Import the fs module
 const path = require('path');
 const { spawn } = require('child_process');
-const { firefox } = require('playwright');
 const chokidar = require('chokidar');
+
+//-------------
+
+const Timeline = (initialValue) => ({
+    lastVal: initialValue,
+    _fns: [],
+    next: function (a) {
+        nextT(a)(this);
+    },
+    bind: function (monadf) {
+        return bindT(monadf)(this);
+    },
+    map: function (f) {
+        return mapT(f)(this);
+    }
+});
+const nextT = a => timeline => {
+    timeline.lastVal = a;
+    timeline._fns.forEach(f => f(a));
+};
+const bindT = (monadf) => (timelineA) => {
+    const timelineB = monadf(timelineA.lastVal);
+    const newFn = (a) => {
+        const timeline = monadf(a);
+        nextT(timeline.lastVal)(timelineB);
+    };
+    timelineA._fns.push(newFn);
+    return timelineB;
+};
+const mapT = (f) => (timelineA) => {
+    const timelineB = Timeline(f(timelineA.lastVal));
+    const newFn = (a) =>
+        nextT(f(a))(timelineB);
+    timelineA._fns.push(newFn);
+    return timelineB;
+};
+
+//-------------
+
+const reloadT = Timeline(undefined);
 
 const port = 3000;
 const projectRoot =
-  '/home/ken/Documents/p/ai-electron/vanfs/build/'; // Specify the project root
+    '/home/ken/Documents/p/ai-electron/vanfs/build/'; // Specify the project root
 
 const server = http.createServer((req, res) => {
     // Get the path of the requested file
@@ -56,79 +95,85 @@ const server = http.createServer((req, res) => {
 server.listen(port, () => {
     console.log(`Server running at http://localhost:${port}/`);
     //========================================================
-    console.log("browser launching");
+
     const url = 'http://localhost:3000/';
-    firefox.launch({
-        headless: false
-    })
-        .then(browser => {
-            return browser.newPage();
-        })
-        .then(page => {
-            page.goto(url);
-            //----------------------------------------------
-            // Specify the files or directories to watch
-            const watchFiles = '/home/ken/Documents/p/ai-electron/vanfs/Program.fs';
+    const watchFiles = '/home/ken/Documents/p/ai-electron/vanfs/Program.fs';
 
-            // Start file monitoring
-            chokidar.watch(watchFiles).on('change', (path) => {
-                console.log(`File ${path} has been changed`);
+    // Start file monitoring
+    chokidar.watch(watchFiles).on('change', (path) => {
+        console.log(`File ${path} has been changed`);
 
-                const cwd = '/home/ken/Documents/p/ai-electron/vanfs/';
-                const commandList = [
-                    'dotnet fable',
-                    'npx vite build'
-                ];
-                const runCommands =
-                    (cwd, commandList) => {
-                        const commands =
-                            commandList.map(commandString =>
-                                commandString.trim().split(/\s+/));
+        const cwd = '/home/ken/Documents/p/ai-electron/vanfs/';
+        const commandList = [
+            'dotnet fable',
+            'npx vite build'
+        ];
+        const runCommands =
+            (cwd, commandList) => {
+                const commands =
+                    commandList.map(commandString =>
+                        commandString.trim().split(/\s+/));
 
-                        return commands.reduce((promise, command) => {
-                            return promise.then(() => {
-                                return new Promise((resolve, reject) => {
-                                    const proc = spawn(command[0], command.slice(1), { cwd });
+                return commands.reduce((promise, command) => {
+                    return promise.then(() => {
+                        return new Promise((resolve, reject) => {
+                            const proc = spawn(command[0], command.slice(1), { cwd });
 
-                                    proc.stdout.on('data', (data) => {
-                                        console.log(`${command[0]} stdout: ${data}`);
-                                    });
-
-                                    proc.stderr.on('data', (data) => {
-                                        console.error(`${command[0]} stderr: ${data}`);
-                                    });
-
-                                    proc.on('close', (code) => {
-                                        if (code === 0) {
-                                            console.log(`${command[0]} exited successfully`);
-                                            resolve();
-                                        } else {
-                                            console.error(`${command[0]} exited with code ${code}`);
-                                            reject(`${command[0]} exited with code ${code}`);
-                                        }
-                                    });
-                                });
+                            proc.stdout.on('data', (data) => {
+                                console.log(`${command[0]} stdout: ${data}`);
                             });
-                        },
-                            Promise.resolve())
-                            .then(() => {
-                                page.reload();
-                            })
-                            .catch((err) => {
-                                console.error('Error running commands:', err);
-                            });
-                    }
 
-                runCommands(cwd, commandList)
+                            proc.stderr.on('data', (data) => {
+                                console.error(`${command[0]} stderr: ${data}`);
+                            });
+
+                            proc.on('close', (code) => {
+                                if (code === 0) {
+                                    console.log(`${command[0]} exited successfully`);
+                                    resolve();
+                                } else {
+                                    console.error(`${command[0]} exited with code ${code}`);
+                                    reject(`${command[0]} exited with code ${code}`);
+                                }
+                            });
+                        });
+                    });
+                },
+                    Promise.resolve())
                     .then(() => {
-                        console.log('All commands executed successfully');
+                        reloadT.next(true);
                     })
                     .catch((err) => {
-                        console.error('Error executing commands:', err);
+                        console.error('Error running commands:', err);
                     });
+            }
 
+        runCommands(cwd, commandList)
+            .then(() => {
+                console.log('All commands executed successfully');
+            })
+            .catch((err) => {
+                console.error('Error executing commands:', err);
             });
 
-        })
+    });
     //========================================================
+});
+
+//------------------------------------------------------------------
+
+
+// サーバー側 (Node.js)
+const WebSocket = require('ws');
+const wss = new WebSocket.Server({ server }); // http.createServer と同じ server を使う
+
+wss.on('connection', (ws) => {
+    console.log('Client connected');
+
+    reloadT.map(a =>
+        (a === undefined)
+        ? undefined
+        : ws.send('reload') // クライアントにリロードメッセージを送信
+    );
+
 });

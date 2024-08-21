@@ -8,9 +8,9 @@
   "keywords": [],
   "author": "",
   "license": "ISC",
-  "description": "",
+  "description": "simple live-webpage-preview",
   "dependencies": {
-    "chokidar": "^3.6.0",
-    "playwright": "^1.46.1"
-  }
+    "chokidar": "^3.6.0"
+  },
+  "devDependencies": {}
 }
