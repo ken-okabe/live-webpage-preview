@@ -17,6 +17,9 @@ const Timeline = (initialValue) => ({
     },
     map: function (f) {
         return mapT(f)(this);
+    },
+    unlink: function () {
+        unlinkT(this);
     }
 });
 const nextT = a => timeline => {
@@ -39,64 +42,74 @@ const mapT = (f) => (timelineA) => {
     timelineA._fns.push(newFn);
     return timelineB;
 };
+const unlinkT = timelineA =>
+    timelineA._fns = [];
 
 //-------------
 
-const reloadT = Timeline(undefined);
-
-const port = 3000;
+const port = 8777;
 const projectRoot =
     '/home/ken/Documents/p/ai-electron/vanfs/build/'; // Specify the project root
 
+const countT = Timeline(0);
+
 const server = http.createServer((req, res) => {
-    // Get the path of the requested file
-    let filePath = path.join(projectRoot, req.url); // Resolve the relative path from the project root
-    // Access to the root path ('/') returns the index.html
-    if (req.url === '/') {
-        filePath = path.join(projectRoot, 'index.html');
-    }
+    // CORSヘッダーを追加 (必要に応じて)
+    res.setHeader('Access-Control-Allow-Origin', '*'); // 開発時のみ、全てのオリジンからのアクセスを許可
+    res.setHeader('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept');
 
-    fs.readFile(filePath, 'utf8', (err, data) => {
-        if (err) {
-            // If the file doesn't exist, return a 404 error
-            if (err.code === 'ENOENT') {
-                res.statusCode = 404;
-                res.setHeader('Content-Type', 'text/plain');
-                res.end('Not Found\n');
-            } else {
-                // For other errors, return a 500 error
-                res.statusCode = 500;
-                res.setHeader('Content-Type', 'text/plain');
-                res.end('Internal Server Error\n');
-            }
-            return;
-        }
-        // Set the Content-Type header based on the file extension
-        let contentType = 'text/plain'; // Default Content-Type
-        switch (path.extname(filePath)) {
-            case '.html':
-                contentType = 'text/html';
-                break;
-            case '.css':
-                contentType = 'text/css';
-                break;
-            case '.js':
-                contentType = 'text/javascript';
-                break;
-            // Add other file types as needed
-        }
-
+    if (req.url === '/count') {
+        // '/count' にアクセスされた場合
         res.statusCode = 200;
-        res.setHeader('Content-Type', contentType);
-        res.end(data);
-    });
+        res.setHeader('Content-Type', 'text/plain');
+        res.end(countT.lastVal.toString()); // カウント値を文字列に変換して返す
+
+    } else {
+        // 他のリクエスト (ファイルの提供など)
+        let filePath = path.join(projectRoot, req.url);
+        if (req.url === '/') {
+            filePath = path.join(projectRoot, 'index.html');
+        }
+
+        fs.readFile(filePath, 'utf8', (err, data) => {
+            if (err) {
+                if (err.code === 'ENOENT') {
+                    res.statusCode = 404;
+                    res.setHeader('Content-Type', 'text/plain');
+                    res.end('Not Found\n');
+                } else {
+                    res.statusCode = 500;
+                    res.setHeader('Content-Type', 'text/plain');
+                    res.end('Internal Server Error\n');
+                }
+                return;
+            }
+
+            let contentType = 'text/plain';
+            switch (path.extname(filePath)) {
+                case '.html':
+                    contentType = 'text/html';
+                    break;
+                case '.css':
+                    contentType = 'text/css';
+                    break;
+                case '.js':
+                    contentType = 'text/javascript';
+                    break;
+                // 必要に応じて他のファイルタイプを追加
+            }
+
+            res.statusCode = 200;
+            res.setHeader('Content-Type', contentType);
+            res.end(data);
+        });
+    }
 });
 
 server.listen(port, () => {
     console.log(`Server running at http://localhost:${port}/`);
     //========================================================
 
-    const url = 'http://localhost:3000/';
     const watchFiles = '/home/ken/Documents/p/ai-electron/vanfs/Program.fs';
 
     // Start file monitoring
@@ -141,7 +154,7 @@ server.listen(port, () => {
                 },
                     Promise.resolve())
                     .then(() => {
-                        reloadT.next(true);
+                        countT.next(countT.lastVal + 1);
                     })
                     .catch((err) => {
                         console.error('Error running commands:', err);
@@ -161,19 +174,3 @@ server.listen(port, () => {
 });
 
 //------------------------------------------------------------------
-
-
-// サーバー側 (Node.js)
-const WebSocket = require('ws');
-const wss = new WebSocket.Server({ server }); // http.createServer と同じ server を使う
-
-wss.on('connection', (ws) => {
-    console.log('Client connected');
-
-    reloadT.map(a =>
-        (a === undefined)
-        ? undefined
-        : ws.send('reload') // クライアントにリロードメッセージを送信
-    );
-
-});
