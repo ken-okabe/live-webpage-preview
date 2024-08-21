@@ -3,6 +3,7 @@ const fs = require('fs'); // Import the fs module
 const path = require('path');
 const { spawn } = require('child_process');
 const chokidar = require('chokidar');
+const player = require('node-wav-player');
 
 //-------------
 
@@ -134,19 +135,32 @@ server.listen(port, () => {
 
                             proc.stdout.on('data', (data) => {
                                 console.log(`${command[0]} stdout: ${data}`);
+                                // player.play({
+                                //     path: './beep-ok.wav',
+                                // })
                             });
 
                             proc.stderr.on('data', (data) => {
                                 console.error(`${command[0]} stderr: ${data}`);
+                                player.play({
+                                    path: './beep-error.wav',
+                                })
                             });
 
                             proc.on('close', (code) => {
                                 if (code === 0) {
                                     console.log(`${command[0]} exited successfully`);
+                                    player.play({
+                                        path: './beep-ok.wav',
+                                    })
                                     resolve();
                                 } else {
                                     console.error(`${command[0]} exited with code ${code}`);
                                     reject(`${command[0]} exited with code ${code}`);
+
+                                    player.play({
+                                        path: './beep-error.wav',
+                                    })
                                 }
                             });
                         });
@@ -164,9 +178,16 @@ server.listen(port, () => {
         runCommands(cwd, commandList)
             .then(() => {
                 console.log('All commands executed successfully');
+
+                player.play({
+                    path: './beep-ok.wav',
+                })
             })
             .catch((err) => {
                 console.error('Error executing commands:', err);
+                player.play({
+                    path: './beep-error.wav',
+                })
             });
 
     });

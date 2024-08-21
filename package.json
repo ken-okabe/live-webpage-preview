@@ -11,6 +11,7 @@
   "description": "simple live-webpage-preview",
   "dependencies": {
     "chokidar": "^3.6.0",
+    "node-wav-player": "^1.0.0",
     "socket.io": "^4.7.5"
   }
 }
